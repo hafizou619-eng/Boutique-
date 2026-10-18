@@ -1,0 +1,109 @@
+<!doctype html><html lang="fr"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Ma boutique</title>
+<style>
+:root{--bg:#f2f4f7;--ink:#14213d;--mut:#5d6778;--card:#fff;--line:#dde2ea;--acc:#f2a900;--ok:#0f7a45;--bad:#b3261e}
+@media(prefers-color-scheme:dark){:root{--bg:#0e1424;--ink:#eef1f7;--mut:#9aa5b8;--card:#172036;--line:#26314d;--ok:#4cc38a;--bad:#ff8a80}}
+*{box-sizing:border-box}body{margin:0;font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--ink)}
+main{max-width:620px;margin:0 auto;padding:16px}h1{font-size:24px;margin:8px 0}h2{font-size:18px;margin:0 0 8px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin:12px 0}
+input,button{font:inherit;width:100%;padding:12px;margin:6px 0;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink)}
+button{background:var(--acc);color:#14213d;border:0;font-weight:700;cursor:pointer}button.s{background:none;color:var(--mut);border:1px solid var(--line);font-weight:500}
+button:focus-visible,input:focus-visible{outline:3px solid var(--ink);outline-offset:2px}
+.bar{padding:10px 14px;border-radius:8px;border:1px solid var(--ok);color:var(--ok)}.bar.w{border-color:var(--bad);color:var(--bad)}
+.row{display:flex;gap:12px;align-items:center}.row>div{flex:1}.row img{width:64px;height:64px;object-fit:cover;border-radius:8px}
+.row button{width:auto;padding:10px 14px;margin:0}.pr{font-weight:700}small,.mut{color:var(--mut)}a{color:var(--ink)}
+</style></head><body><main id="app">Chargement…</main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script>
+// ==== À REMPLIR ====
+const SUPABASE_URL='https://bnicoukodqoisfejzhji.supabase.co', SUPABASE_KEY='sb_publishable_p8pYoVF7zA9-tHw3dKYnLA_Wgzc87gc';
+const PRIX='3 000 FCFA', CONTACT_WA='237672687566', PAY_LINK=''; // PAY_LINK : lien de paiement du fournisseur (optionnel)
+// ===================
+const A=document.getElementById('app'),g=id=>document.getElementById(id);
+if(SUPABASE_URL.startsWith('COLLE')){A.innerHTML='<div class="card"><h2>Configuration manquante</h2><p>Colle l\'URL et la clé Supabase en haut du fichier index.html.</p></div>';throw new Error('config')}
+const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fc=n=>Number(n).toLocaleString('fr-FR')+' FCFA';
+const wa=n=>{n=String(n).replace(/\D/g,'');return n.length===9&&n[0]==='6'?'237'+n:n};
+const err=e=>{const m=e?.message||String(e);return /Invalid login/i.test(m)?'Email ou mot de passe incorrect.':/already registered/i.test(m)?'Cet email a déjà un compte : appuie sur Se connecter.':/duplicate key|already exists/i.test(m)?'Cette adresse est déjà prise, choisis-en une autre.':/row-level security/i.test(m)?'Action refusée : ton accès est peut-être terminé. Actualise la page.':/fetch|network/i.test(m)?'Problème de connexion internet. Réessaie.':m};
+const busy=async(b,fn)=>{b.disabled=true;const t=b.textContent;b.textContent='Patiente…';try{await fn()}catch(e){alert(err(e))}finally{b.disabled=false;b.textContent=t}};
+const shrink=f=>new Promise(r=>{const i=new Image();i.onload=()=>{const k=Math.min(1,900/Math.max(i.width,i.height)),c=document.createElement('canvas');c.width=Math.round(i.width*k);c.height=Math.round(i.height*k);c.getContext('2d').drawImage(i,0,0,c.width,c.height);c.toBlob(b=>r(b||f),'image/jpeg',.8)};i.onerror=()=>r(f);i.src=URL.createObjectURL(f)});
+const slug=location.pathname.startsWith('/b/')?decodeURIComponent(location.pathname.slice(3)).replace(/\/$/,'').toLowerCase():null;
+slug?shopPage(slug):start();
+
+async function shopPage(s){
+  const {data:shop}=await sb.from('shops').select('*').eq('slug',s).maybeSingle();
+  if(!shop){A.innerHTML='<div class="card"><h2>Boutique indisponible</h2><p class="mut">Cette boutique n\'existe pas ou est en pause.</p></div>';return}
+  const {data:ps}=await sb.from('products').select('*').eq('shop_id',shop.id).order('created_at',{ascending:false});
+  document.title=shop.name;
+  A.innerHTML=`<h1>${esc(shop.name)}</h1>`+((ps||[]).map(p=>`<div class="card row">${p.image_url?`<img src="${esc(p.image_url)}" alt="">`:''}<div><b>${esc(p.name)}</b><br><small>${esc(p.description)}</small><div class="pr">${fc(p.price)}</div></div><button data-id="${p.id}">Commander</button></div>`).join('')||'<div class="card">Aucun produit pour le moment.</div>');
+  A.querySelectorAll('button[data-id]').forEach(b=>b.onclick=()=>order(shop,ps.find(p=>p.id==b.dataset.id)));
+}
+async function order(shop,p){
+  const name=prompt('Votre nom ?');if(!name)return;
+  const phone=prompt('Votre numéro de téléphone ?')||'';
+  await sb.from('orders').insert({shop_id:shop.id,product_id:p.id,customer_name:name,customer_phone:phone});
+  const msg=`Bonjour, je veux commander : ${p.name} (${fc(p.price)}). Nom : ${name}`;
+  location.href=`https://wa.me/${wa(shop.whatsapp)}?text=${encodeURIComponent(msg)}`;
+}
+
+async function start(){const {data:{session}}=await sb.auth.getSession();session?dash(session.user):auth()}
+function auth(msg=''){
+  A.innerHTML=`<h1>Ta boutique WhatsApp</h1><div class="card"><p>Essai gratuit 7 jours, puis ${PRIX} par mois.</p><input id="e" type="email" placeholder="Email" autocomplete="email"><input id="p" type="password" placeholder="Mot de passe (6 caractères minimum)" autocomplete="current-password"><button id="li">Se connecter</button><button class="s" id="su">Créer mon compte</button><p class="mut" id="m">${esc(msg)}</p></div>`;
+  const go=f=>busy(g(f==='signUp'?'su':'li'),async()=>{
+    const email=g('e').value.trim(),password=g('p').value;
+    if(!email||password.length<6){g('m').textContent='Entre ton email et un mot de passe de 6 caractères minimum.';return}
+    const {data,error}=await sb.auth[f]({email,password});
+    if(error){g('m').textContent=err(error);return}
+    if(f==='signUp'&&!data.session){g('m').textContent='Compte créé. Vérifie ton email pour confirmer, puis connecte-toi.';return}
+    start()});
+  g('li').onclick=()=>go('signInWithPassword');g('su').onclick=()=>go('signUp');
+}
+function bind(user){
+  g('out').onclick=async()=>{await sb.auth.signOut();auth()};
+  if(g('pay'))g('pay').onclick=()=>open(PAY_LINK?`${PAY_LINK}${PAY_LINK.includes('?')?'&':'?'}ref=${user.id}`:`https://wa.me/${CONTACT_WA}?text=${encodeURIComponent('Bonjour, je veux payer mon abonnement. Email : '+user.email)}`,'_blank');
+  if(g('rf'))g('rf').onclick=()=>dash(user);
+}
+async function dash(user){
+  const now=new Date();
+  const {data:ac}=await sb.from('access').select('*').eq('user_id',user.id).maybeSingle();
+  let h=`<div class="row"><div><h1>Mon espace</h1></div><button class="s" id="out">Sortir</button></div>`;
+  if(!ac){A.innerHTML=h+'<div class="bar w">Ton compte n\'est pas encore prêt. Sors, reconnecte-toi, ou contacte-nous.</div>';bind(user);return}
+  const pe=ac.paid_until?new Date(ac.paid_until):null, end=new Date(Math.max(+new Date(ac.trial_ends),+(pe||0)));
+  const ok=end>now, paid=pe&&pe>now, days=Math.ceil((end-now)/864e5);
+  if(!ok){
+    A.innerHTML=h+`<div class="bar w">Ton accès est terminé. Ta boutique est masquée à tes clients.</div><div class="card"><h2>Réactiver pour 30 jours</h2><p>${PRIX} par mois, à payer en Mobile Money (MTN ou Orange).</p><button id="pay">Payer l'abonnement</button><button class="s" id="rf">J'ai payé, actualiser</button></div>`;
+    bind(user);return;
+  }
+  h+=`<div class="bar">${paid?'Abonnement actif':'Essai gratuit'} : ${days} jour(s) restant(s), jusqu'au ${end.toLocaleDateString('fr-FR')}</div>`;
+  const {data:shop}=await sb.from('shops').select('*').eq('owner',user.id).maybeSingle();
+  if(!shop){
+    A.innerHTML=h+`<div class="card"><h2>Crée ta boutique</h2><input id="sn" placeholder="Nom de la boutique"><input id="sl" placeholder="Adresse (ex : aminata-mode)"><input id="sw" placeholder="Numéro WhatsApp (ex : 670000000)" inputmode="tel"><button id="mk">Créer ma boutique</button></div>`;
+    bind(user);
+    g('mk').onclick=()=>busy(g('mk'),async()=>{
+      const name=g('sn').value.trim(),sl=g('sl').value.toLowerCase().trim().replace(/\s+/g,'-'),w=wa(g('sw').value);
+      if(!name)return alert('Entre le nom de la boutique.');
+      if(!/^[a-z0-9-]{3,30}$/.test(sl))return alert('Adresse : 3 à 30 caractères, lettres sans accent, chiffres et tirets seulement.');
+      if(w.length<9)return alert('Numéro WhatsApp invalide.');
+      const {error}=await sb.from('shops').insert({name,slug:sl,whatsapp:w});if(error)throw error;dash(user)});
+    return;
+  }
+  const [{data:ps},{data:os}]=await Promise.all([
+    sb.from('products').select('*').eq('shop_id',shop.id).order('created_at',{ascending:false}),
+    sb.from('orders').select('*,products(name)').eq('shop_id',shop.id).order('created_at',{ascending:false}).limit(30)]);
+  const url=`${location.origin}/b/${shop.slug}`;
+  h+=`<div class="card"><h2>${esc(shop.name)}</h2><p>Ton lien à partager en statut WhatsApp :<br><a href="${esc(url)}">${esc(url)}</a></p></div>
+  <div class="card"><h2>Ajouter un produit</h2><input id="pn" placeholder="Nom du produit"><input id="pp" type="number" inputmode="numeric" placeholder="Prix en FCFA"><input id="pd" placeholder="Description (taille, couleur...)"><input id="im" type="file" accept="image/*"><button id="ad">Ajouter le produit</button></div>
+  <div class="card"><h2>Mes produits</h2>${(ps||[]).map(p=>`<div class="row" style="margin:8px 0">${p.image_url?`<img src="${esc(p.image_url)}" alt="">`:''}<div><b>${esc(p.name)}</b><br><span class="pr">${fc(p.price)}</span></div><button class="s" data-del="${p.id}">Retirer</button></div>`).join('')||'<p class="mut">Ajoute ton premier produit ci-dessus.</p>'}</div>
+  <div class="card"><h2>Commandes</h2>${(os||[]).map(o=>`<div class="row" style="margin:8px 0"><div><b>${esc(o.products?.name||'Produit retiré')}</b><br><small>${esc(o.customer_name)} · ${esc(o.customer_phone)}</small></div><button class="s" data-st="${o.id}" data-cur="${o.status}">${o.status}</button></div>`).join('')||'<p class="mut">Aucune commande pour le moment.</p>'}</div>`;
+  A.innerHTML=h;bind(user);
+  g('ad').onclick=()=>busy(g('ad'),async()=>{
+    const name=g('pn').value.trim(),price=Math.round(+g('pp').value);
+    if(!name||!(price>=0)||g('pp').value==='')return alert('Entre le nom et le prix du produit.');
+    let image_url=null;const f=g('im').files[0];
+    if(f){const path=`${user.id}/${Date.now()}.jpg`;const {error}=await sb.storage.from('photos').upload(path,await shrink(f),{contentType:'image/jpeg'});if(error)throw error;image_url=sb.storage.from('photos').getPublicUrl(path).data.publicUrl}
+    const {error}=await sb.from('products').insert({shop_id:shop.id,name,price,description:g('pd').value.trim(),image_url});if(error)throw error;dash(user)});
+  A.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>busy(b,async()=>{if(confirm('Retirer ce produit ?')){await sb.from('products').delete().eq('id',b.dataset.del);dash(user)}}));
+  A.querySelectorAll('[data-st]').forEach(b=>b.onclick=()=>busy(b,async()=>{const n={'nouvelle':'payée','payée':'livrée','livrée':'nouvelle'}[b.dataset.cur];await sb.from('orders').update({status:n}).eq('id',b.dataset.st);dash(user)}));
+}
+</script></body></html>
