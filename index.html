@@ -1,3 +1,4 @@
+
 <!doctype html><html lang="fr"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>Ma boutique</title>
 <style>
@@ -12,7 +13,9 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--ink);outline-of
 .bar{padding:10px 14px;border-radius:8px;border:1px solid var(--ok);color:var(--ok)}.bar.w{border-color:var(--bad);color:var(--bad)}
 .row{display:flex;gap:12px;align-items:center}.row>div{flex:1}.row img{width:64px;height:64px;object-fit:cover;border-radius:8px}
 .row button{width:auto;padding:10px 14px;margin:0}.pr{font-weight:700}small,.mut{color:var(--mut)}a{color:var(--ink)}
-</style></head><body><main id="app">Chargement…</main>
+.gal{display:flex;gap:8px;overflow-x:auto;scroll-snap-type:x mandatory;margin-bottom:10px}.gal img{height:240px;width:auto;max-width:100%;flex:none;border-radius:8px;scroll-snap-align:start;cursor:zoom-in}
+#lb{position:fixed;inset:0;background:rgba(0,0,0,.95);display:none;overflow-x:auto;scroll-snap-type:x mandatory;z-index:9}#lb.on{display:flex}#lb img{flex:none;width:100%;height:100%;object-fit:contain;scroll-snap-align:center}
+</style></head><body><main id="app">Chargement…</main><div id="lb"></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 // ==== À REMPLIR ====
@@ -24,6 +27,8 @@ if(SUPABASE_URL.startsWith('COLLE')){A.innerHTML='<div class="card"><h2>Configur
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fc=n=>Number(n).toLocaleString('fr-FR')+' FCFA';
+const imgs=p=>p.images?.length?p.images:(p.image_url?[p.image_url]:[]);
+const zoom=(l,i)=>{const b=g('lb');b.innerHTML=l.map(u=>`<img src="${esc(u)}" alt="">`).join('');b.classList.add('on');b.scrollLeft=i*innerWidth;b.onclick=()=>b.classList.remove('on')};
 const wa=n=>{n=String(n).replace(/\D/g,'');return n.length===9&&n[0]==='6'?'237'+n:n};
 const err=e=>{const m=e?.message||String(e);return /Invalid login/i.test(m)?'Email ou mot de passe incorrect.':/already registered/i.test(m)?'Cet email a déjà un compte : appuie sur Se connecter.':/duplicate key|already exists/i.test(m)?'Cette adresse est déjà prise, choisis-en une autre.':/row-level security/i.test(m)?'Action refusée : ton accès est peut-être terminé. Actualise la page.':/fetch|network/i.test(m)?'Problème de connexion internet. Réessaie.':m};
 const busy=async(b,fn)=>{b.disabled=true;const t=b.textContent;b.textContent='Patiente…';try{await fn()}catch(e){alert(err(e))}finally{b.disabled=false;b.textContent=t}};
@@ -36,8 +41,9 @@ async function shopPage(s){
   if(!shop){A.innerHTML='<div class="card"><h2>Boutique indisponible</h2><p class="mut">Cette boutique n\'existe pas ou est en pause.</p></div>';return}
   const {data:ps}=await sb.from('products').select('*').eq('shop_id',shop.id).order('created_at',{ascending:false});
   document.title=shop.name;
-  A.innerHTML=`<h1>${esc(shop.name)}</h1>`+((ps||[]).map(p=>`<div class="card row">${p.image_url?`<img src="${esc(p.image_url)}" alt="">`:''}<div><b>${esc(p.name)}</b><br><small>${esc(p.description)}</small><div class="pr">${fc(p.price)}</div></div><button data-id="${p.id}">Commander</button></div>`).join('')||'<div class="card">Aucun produit pour le moment.</div>');
+  A.innerHTML=`<h1>${esc(shop.name)}</h1>`+((ps||[]).map(p=>`<div class="card">${imgs(p).length?`<div class="gal">${imgs(p).map((u,i)=>`<img src="${esc(u)}" alt="" data-z="${p.id}:${i}">`).join('')}</div>`:''}<div class="row"><div><b>${esc(p.name)}</b><br><small>${esc(p.description)}</small><div class="pr">${fc(p.price)}</div></div><button data-id="${p.id}">Commander</button></div></div>`).join('')||'<div class="card">Aucun produit pour le moment.</div>');
   A.querySelectorAll('button[data-id]').forEach(b=>b.onclick=()=>order(shop,ps.find(p=>p.id==b.dataset.id)));
+  A.querySelectorAll('img[data-z]').forEach(m=>m.onclick=()=>{const [id,i]=m.dataset.z.split(':');zoom(imgs(ps.find(p=>p.id==id)),+i)});
 }
 async function order(shop,p){
   const name=prompt('Votre nom ?');if(!name)return;
@@ -93,16 +99,16 @@ async function dash(user){
     sb.from('orders').select('*,products(name)').eq('shop_id',shop.id).order('created_at',{ascending:false}).limit(30)]);
   const url=`${location.origin}/b/${shop.slug}`;
   h+=`<div class="card"><h2>${esc(shop.name)}</h2><p>Ton lien à partager en statut WhatsApp :<br><a href="${esc(url)}">${esc(url)}</a></p></div>
-  <div class="card"><h2>Ajouter un produit</h2><input id="pn" placeholder="Nom du produit"><input id="pp" type="number" inputmode="numeric" placeholder="Prix en FCFA"><input id="pd" placeholder="Description (taille, couleur...)"><input id="im" type="file" accept="image/*"><button id="ad">Ajouter le produit</button></div>
-  <div class="card"><h2>Mes produits</h2>${(ps||[]).map(p=>`<div class="row" style="margin:8px 0">${p.image_url?`<img src="${esc(p.image_url)}" alt="">`:''}<div><b>${esc(p.name)}</b><br><span class="pr">${fc(p.price)}</span></div><button class="s" data-del="${p.id}">Retirer</button></div>`).join('')||'<p class="mut">Ajoute ton premier produit ci-dessus.</p>'}</div>
+  <div class="card"><h2>Ajouter un produit</h2><input id="pn" placeholder="Nom du produit"><input id="pp" type="number" inputmode="numeric" placeholder="Prix en FCFA"><input id="pd" placeholder="Description (taille, couleur...)"><input id="im" type="file" accept="image/*" multiple><small class="mut">Jusqu'à 5 photos</small><button id="ad">Ajouter le produit</button></div>
+  <div class="card"><h2>Mes produits</h2>${(ps||[]).map(p=>`<div class="row" style="margin:8px 0">${imgs(p)[0]?`<img src="${esc(imgs(p)[0])}" alt="">`:''}<div><b>${esc(p.name)}</b><br><span class="pr">${fc(p.price)}</span>${imgs(p).length>1?` <small>(${imgs(p).length} photos)</small>`:''}</div><button class="s" data-del="${p.id}">Retirer</button></div>`).join('')||'<p class="mut">Ajoute ton premier produit ci-dessus.</p>'}</div>
   <div class="card"><h2>Commandes</h2>${(os||[]).map(o=>`<div class="row" style="margin:8px 0"><div><b>${esc(o.products?.name||'Produit retiré')}</b><br><small>${esc(o.customer_name)} · ${esc(o.customer_phone)}</small></div><button class="s" data-st="${o.id}" data-cur="${o.status}">${o.status}</button></div>`).join('')||'<p class="mut">Aucune commande pour le moment.</p>'}</div>`;
   A.innerHTML=h;bind(user);
   g('ad').onclick=()=>busy(g('ad'),async()=>{
     const name=g('pn').value.trim(),price=Math.round(+g('pp').value);
     if(!name||!(price>=0)||g('pp').value==='')return alert('Entre le nom et le prix du produit.');
-    let image_url=null;const f=g('im').files[0];
-    if(f){const path=`${user.id}/${Date.now()}.jpg`;const {error}=await sb.storage.from('photos').upload(path,await shrink(f),{contentType:'image/jpeg'});if(error)throw error;image_url=sb.storage.from('photos').getPublicUrl(path).data.publicUrl}
-    const {error}=await sb.from('products').insert({shop_id:shop.id,name,price,description:g('pd').value.trim(),image_url});if(error)throw error;dash(user)});
+    const urls=[];
+    for(const f of [...g('im').files].slice(0,5)){const path=`${user.id}/${Date.now()}-${urls.length}.jpg`;const {error}=await sb.storage.from('photos').upload(path,await shrink(f),{contentType:'image/jpeg'});if(error)throw error;urls.push(sb.storage.from('photos').getPublicUrl(path).data.publicUrl)}
+    const {error}=await sb.from('products').insert({shop_id:shop.id,name,price,description:g('pd').value.trim(),image_url:urls[0]||null,images:urls});if(error)throw error;dash(user)});
   A.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>busy(b,async()=>{if(confirm('Retirer ce produit ?')){await sb.from('products').delete().eq('id',b.dataset.del);dash(user)}}));
   A.querySelectorAll('[data-st]').forEach(b=>b.onclick=()=>busy(b,async()=>{const n={'nouvelle':'payée','payée':'livrée','livrée':'nouvelle'}[b.dataset.cur];await sb.from('orders').update({status:n}).eq('id',b.dataset.st);dash(user)}));
 }
